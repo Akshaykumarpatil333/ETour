@@ -7,7 +7,7 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 @SpringBootApplication
 public class SpringbootBackendApplication {
 
-	public static  main(String[] args) {
+	public static void main(String[] args) {
 		SpringApplication.run(SpringbootBackendApplication.class, args);
 	}
 
