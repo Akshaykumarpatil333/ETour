@@ -33,5 +33,243 @@ docker tag spring-boot-backendmysql-docker.jar akshaykumarpatil333/spring-boot-b
 docker push akshaykumarpatil333/spring-boot-backendmysql-docker.jar
 docker tag 8.0.31 akshaykumarpatil333/mysql
 docker push akshaykumarpatil333/8.0.31
+*************************************************Git**********************************************************************************
+####Local
+git init
+git add
+git status
+git commit -m"any message" ,if stucked in git then Esc :wq
+git log
+####Remote
+git remote  add origin "git url from github"
+git push -u origin master
+#####Checkout
+make folder open git bash 
+git clone "git url from github"
+git pull origin master -pull before doing any change or push if many dev working on same project
+git branch 
+git branch phase2
+git checkout phase2
 **********************************************************************JENKINS***********************************************************************
 java -jar jenkins.war
+*****************************************KUBERNETES***********************************************************
+minikube version
+minikube start --driver=docker
+minikube status
+kubectl cluster-info
+kubectl get node
+minikube docker-env
+ @FOR /f "tokens=*" %i IN ('minikube -p minikube docker-env --shell cmd') DO @%i    <---this will after previous tep so copy& paste
+docker images
+change derictory of docker file of spring boot and make docker images as we did earlier
+docker images
+kubectl create deployment spring-boot-k8s --image=spring-boot-backendmysql-docker=1.0 --port=9094
+kubectl get deployment
+kubectl describe deployment
+kubectl get pods
+kubectl logs (name of  pod)
+kubectl expose deployment (name of  deployment) --type=NodePort
+kubectl get service
+minikube service (name of  service) --url
+minikube dashboard
+copy paste url on chrome to see all visually 
+kubectl delete service (name of  service)
+kubectl delete deployment (name of  pod)
+minikube stop
+minikube delete
+after reopening*****************************************************
+minikube start 
+eval $(minikube docker-env)
+docker images
+change derictory of docker file of spring boot
+ls -l
+docker build -t spring-boot-backendmysql-docker:1.0  .<=not needed for spring curd as we have different approach there
+kubectl apply -f  (filname of yml from above ls-l)
+kubectl get deployments
+kubectl get pods
+kubectl logs (pod name to check health)
+kubectl exec -it mysql-(name in pod) /bin/bash<=inside another cli or bash
+mysql -h mysql -u root -p
+..............
+kubectl getconfigmap
+kubectl get secretes
+....................................Application.properties....................................
+server.port=9092
+spring.jpa.hibernate.ddl-auto=update
+spring.datasource.url=jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/employee_management_system
+spring.datasource.username=${MYSQL_USER:root}
+spring.datasource.password=${MYSQL_PASSWORD:test@123}
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+...................................Dockerfile.........................................
+FROM openjdk:8
+EXPOSE 9094
+ADD target/spring-boot-backendmysql-docker.jar spring-boot-backendmysql-docker.jar
+ENTRYPOINT [ "java","-jar","spring-boot-backendmysql-docker.jar" ] CMD ["-start"]
+.................................app-deployment.yaml...............................
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: springboot-crud-deployment
+spec:
+  selector:
+    matchLabels:
+      app: springboot-k8s-mysql
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: springboot-k8s-mysql
+    spec:
+      containers:
+        - name: springboot-crud-k8s
+          image: springboot-crud-k8s:1.0
+          ports:
+            - containerPort: 8080
+          env:   # Setting Enviornmental Variables
+            - name: DB_HOST   # Setting Database host address from configMap
+              valueFrom :
+                configMapKeyRef :
+                  name : db-config
+                  key :  host
+
+            - name: DB_NAME  # Setting Database name from configMap
+              valueFrom :
+                configMapKeyRef :
+                  name : db-config
+                  key :  dbName
+
+            - name: DB_USERNAME  # Setting Database username from Secret
+              valueFrom :
+                secretKeyRef :
+                  name : mysql-secrets
+                  key :  username
+
+            - name: DB_PASSWORD # Setting Database password from Secret
+              valueFrom :
+                secretKeyRef :
+                  name : mysql-secrets
+                  key :  password
+
+---
+
+apiVersion: v1 # Kubernetes API version
+kind: Service # Kubernetes resource kind we are creating
+metadata: # Metadata of the resource kind we are creating
+  name: springboot-crud-svc
+spec:
+  selector:
+    app: springboot-k8s-mysql
+  ports:
+    - protocol: "TCP"
+      port: 8080 # The port that the service is running on in the cluster
+      targetPort: 8080 # The port exposed by the service
+  type: NodePort # type of the service.
+
+.................................................db-deployment.yaml.....................................................
+# Define a 'Persistent Voulume Claim'(PVC) for Mysql Storage, dynamically provisioned by cluster
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim # name of PVC essential for identifying the storage data
+  labels:
+    app: mysql
+    tier: database
+spec:
+  accessModes:
+    - ReadWriteOnce   #This specifies the mode of the claim that we are trying to create.
+  resources:
+    requests:
+      storage: 1Gi    #This will tell kubernetes about the amount of space we are trying to claim.
+---
+# Configure 'Deployment' of mysql server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+    tier: database
+spec:
+  selector: # mysql Pod Should contain same labels
+    matchLabels:
+      app: mysql
+      tier: database
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels: # Must match 'Service' and 'Deployment' selectors
+        app: mysql
+        tier: database
+    spec:
+      containers:
+        - image: mysql:5.7 # image from docker-hub
+          args:
+            - "--ignore-db-dir=lost+found" # Workaround for https://github.com/docker-library/mysql/issues/186
+          name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom :
+                secretKeyRef :
+                  name : mysql-secrets
+                  key :  password
+
+            - name: MYSQL_DATABASE # Setting Database Name from a 'ConfigMap'
+              valueFrom :
+                configMapKeyRef :
+                  name : db-config
+                  key :  dbName
+
+
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:        # Mounting voulume obtained from Persistent Volume Claim
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql #This is the path in the container on which the mounting will take place.
+      volumes:
+        - name: mysql-persistent-storage # Obtaining 'vloume' from PVC
+          persistentVolumeClaim:
+            claimName: mysql-pv-claim
+---
+# Define a 'Service' To Expose mysql to Other Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql  # DNS name
+  labels:
+    app: mysql
+    tier: database
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+  selector:       # mysql Pod Should contain same labels
+    app: mysql
+    tier: database
+  clusterIP: None  # We Use DNS, Thus ClusterIP is not relevant
+.............................................................mysql-configMap.yaml...............................
+apiVersion : v1
+kind : ConfigMap
+metadata:
+  name : db-config
+data:
+  host : mysql
+  dbName: javatechie
+..............................................................................................................
+echo -n '(any name u want to encrypt)' | base64
+................................mysql-secrets.yaml.......................................
+apiVersion : v1
+kind : Secret
+metadata:
+  name : mysql-secrets
+data:
+  username : cm9vdA==
+  password : cm9vdA==
+...................................................................
+kubectl get svc
+kubectl get service
+kubectl get nodes -o wide
+minikube ip 
+minikube dashboard (to check health of kube on browser directly )
